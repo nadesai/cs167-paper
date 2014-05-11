@@ -47,49 +47,76 @@ For a general graph, the problem of connectivity is well-understood and easy to 
 need only run a depth-first search from $u$ to expose all the nodes in a graph to which $u$ is connected. This depth-first search takes time $\Theta(V+E)$
 (with very small constant factors), and is the best we can do on a static graph. 
 
-Consider what happens when we generalize this problem to dynamic graphs, however. In particular, make two further generalizations: assume that $k$ edges are added,
-one by one, to the graph, and assume that after every edge addition we will query for the connectivity of two arbitrary nodes in the graph. 
+Consider what happens when we generalize this problem to dynamic graphs, however. In particular, make two further generalizations: assume that $k$ edges or vertices 
+are added, one by one, to the graph, and assume that after every edge addition we will query for the connectivity of two arbitrary nodes in the graph. This moves 
+the graph into the realm of the _streaming_ model as well - observe that we can build up a graph by simply starting with an empty graph, then adding its $V+E$ edges,.
+making $V+E$ queries. 
 
-If we wish to find out the connectivity of two arbitrary nodes in the graph
-after every addition to it, we will 
-
-BFS and DFS runtime: $O(V+E)$; auxiliary storage $O(V)$ Algorithms using BFS/DFS repeatedly will traverse same graph _multiple times_! When $V$ is big, this is bad.
-When our graphs are big, even $O(V)$ runtime sucks.
+With no additional storage allowed, the straightforward algorithm to solve this problem will have to simply rerun DFS over the graph after _every single query,_
+leading to an effective runtime of $O(kV+kE).$ In the case where $k=V+E,$ this will degenerate to $O(E^2)=O(V^4)$ in the worst case. Clearly, this performance
+is poor; we would like to know how to do better. It turns out the solution to this involves something called "sketching," which we shall see more of below.
 
 Sketching
 ===
-Recall last week's paper introduced the notions of _sketching_ and _streaming_.
-Streaming: algorithms that consume their input in "blocks" at a time, holding on to $O(\log n)$ memory.
-Sketching: "small" (sublinear, usually logarithmic) representations of a dataset that support queries over that dataset.
-_Strongly related notions!_
-Streams often build sketches of the data to use as their "memory".
-Constructing sketches should happen in a streaming fashion.
+When solving a problem on a static input, there's no advantage to holding on to information after the algorithm is completed; in fact, it would be an obvious waste
+to do so. However, when working with _dynamic_ input, especially one which changes "incrementally," it becomes advantageous to retain at least _some_ information
+about it. Usually, a dynamic dataset is so big that one cannot simply store it in memory; instead, we must store some smaller representation of it, which gives
+us an "approximation" of the data it contains. This, vaguely, is the notion of sketching.
 
-Analogy to locality sensitive hashing
-Compresses a dataset while retaining a high percentage of its structure
-We usually build sketches _for_ particular problems
+More specifically, given a dynamic data structure $T,$ a __sketch__ $\mathcal S(T)$ is a substantially sublinear dynamic data structure that "approximates" the contents of $T.$ 
+We will break this down further.
 
-Compressed sensing: reconstruct sparse signal $\mathbf{x}$ from "small" number of linear measurements
-_Functional_ compressed sensing: for some function $f,$ compute $f(\mathbf{x})$
-Note: _no need_ to reconstruct $\mathbf{x}$ in this process!
-Can perform functional compressed sensing on a vector $\mathbf{x}$ by creating a sketch $\mathcal S(\mathbf{x})$ and asking
-this sketch for $f(\mathbf{x})$
+* By __sublinear,__ we mean that if $|D|$ denotes the memory necessary to store data structure $D,$ then $|\mathcal S(T)|=o(|T|).$ In practice, we will
+  want to achieve a "win" of roughly a linear factor; thus, if $|T|=\Theta(n),$ we will seek for $|\mathcal S(T)|=\Theta(\log^k n)$ for some $k,$
+  and likewise a data structure of size $|T|=O(n^2)$ (such as a general graph) will get space $O(n\log^k n).$ 
+* By __dynamic,__ we mean that $\mathcal S(T)$ should handle updates. To be fair, we will allow $\mathcal S(T)$ to _choose_ which types of updates it supports, and
+  refuse to support any others. More on this below.
+* By __"approximation,"__ we mean a few things. As a prelude, observe that a sketch $\mathcal S(T)$ _cannot_ perfectly preserve the 
+  contents of $T$, because $|\mathcal S(T)|$ must be strictly _smaller_ than $|T|,$ and information theory tells us perfect compression in this form is impossible.
+  There are two ways we can deal with this problem. First, we could decide to preserve only certain types information about $T$, letting queries relying on other 
+  information fail. Second, we could decide to relax the requirement of accuracy, and instead let the sketch only _approximate_ the answers to specific questions
+  about $T.$ In practice, we shall do both. 
 
-1. __How can a sketch work? Don't we need every element of the data structure to get an answer?__
-   Yes, we do. Sketches are _lossy_ compressions of a dataset, and preserve only specific types of information.
-2. __Is there such a thing as a "canonical" sketch of a dataset?__
-   Since sketches are inherently lossy, there will be queries that the sketch cannot answer with accuracy.
-   That said, there are some sketches that support many different types of queries and have become the "standard" for many algorithms.
+This may seem a little obscure, so we will give a few examples of sketches. 
 
-A "summarized" version of the dataset in question, which we can query for salient information
-__Information is lost__: we cannot reconstruct the graph. Not all questions can be answered accurately.
-We want a $O(N)$ data structure that answers the following question: for $u,v\in G,$ is there a path from $u$ to $v$?
-Answer: run Kruskal's algorithm over the graph to generate a _minimum spanning forest._ $u$ and $v$ are connected if they are part of the same MST.
-Problem: _what happens if we delete edges?_
+1. Consider the __Bloom filter.__ As covered in CS 161, the Bloom filter is a way to approximate the notion of a set, supporting queries such as
+   \textsc{IsElement} and \textsc{AddElement} (but no others). It has space strictly smaller than that necessary to store an actual set (in fact, depending on the
+   error parameters, it can be as small or as large as the user needs!), and because it supports the \textsc{AddElement} operation, it supports the dynamic updating of
+   the set. This sounds an awful lot like a sketch!
+2. Recall the paper from two weeks ago in which we discussed locality-sensitive hashing. For a set $T,$ define $\mathcal S(T)=\{h(x)\mid x\in T\},$ where $h$
+   is drawn from some locality-sensitive family $\mathcal H$ of hash functions. In this case, $\mathcal S(T)$ supports $\textsc{AreNeighbors}(x,y)$ for any
+   $x,y\in T,$ and supports any queries that rely solely upon discerning the "families" of its member.
+
+At this point, sketches may seem like an unnecessarily limited form of computation - why on earth would we ever want to use them? In practice, however, forcing these
+restrictions allows sketches to have immense general-purpose applications. 
+
+* If we have a large dataset $T,$ very often we will be unable to hold all of $T$ in memory
+  at once. Every time we want to obtain information about $T,$ we will need to rerun an at-best-linear computation over $T$; if we have many such queries, this will
+  quickly become large. Sketches provide a way to "cache" the information we know about $T.$
+* Many times, we will receive information as a "stream" of updates rather than as a single monolithic input. In the Facebook social graph, for example, new members and
+  new friendships occur all the time. We want our cache to be able to incorporate these updates and record them over time.
+
+To re-emphasize a few points, recall that sketches will _not_ preserve all information about a dataset; they can be thought of as "lossy" compressions. 
+As a consequence, only certain questions can be asked of sketches, and even those may not be accurately answered. For many algorithms, though, these
+restrictions lead to powerful gains in space and time.
+
+Solving connectivity with sketches
+====
+To recap: we want a $O(N)$ data structure that answers questions about connectivity. In particular: for $u,v\in G,$ is there a path from $u$ to $v$?
+And what happens after we add or delete an arbitrary edge $(x,y)$? 
+
+We already tried one naive approach, namely rerunning the depth-first search algorithm after each addition of an edge, but saw quickly that it was too slow.
+
+We propose a simple "sketch" that will solve the problem, as long as only edges and vertices are added to the graph. In particular, 
+run Kruskal's algorithm over the graph to generate a _minimum spanning forest_ of the graph. Then each connected component of the graph will be represented
+by _a unique_ MST, and $u$ and $v$ will be connected if and only if they are part of the same MST.
+
+Obviously, this sketch supports the query $\textsc{Is-Connected}(x,y).$ It also supports $\textsc{Add-Edge}(x,y).$ 
+Here's a problem, though: _what happens if we delete edges?_
 
 Key problem
 ====
-
+We've now finally arrived at the problem the McGregor et al. paper aims to solve.
 We would like to solve the following problem: 
 __how can we sketch an undirected graph $G=(E,V)$ in a way that supports many structural queries?__
 Check if two vertices $u,v\in G$ are neighbors.

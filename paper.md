@@ -102,32 +102,43 @@ restrictions lead to powerful gains in space and time.
 
 Solving connectivity with sketches
 ====
-To recap: we want a $O(N)$ data structure that answers questions about connectivity. In particular: for $u,v\in G,$ is there a path from $u$ to $v$?
+To recap: we want a $O(V\log^k V)$ data structure that answers questions about connectivity. In particular: for $u,v\in G,$ is there a path from $u$ to $v$?
 And what happens after we add or delete an arbitrary edge $(x,y)$? 
 
 We already tried one naive approach, namely rerunning the depth-first search algorithm after each addition of an edge, but saw quickly that it was too slow.
 
 We propose a simple "sketch" that will solve the problem, as long as only edges and vertices are added to the graph. In particular, 
 run Kruskal's algorithm over the graph to generate a _minimum spanning forest_ of the graph. Then each connected component of the graph will be represented
-by _a unique_ MST, and $u$ and $v$ will be connected if and only if they are part of the same MST.
+by _a unique_ MST, and $u$ and $v$ will be connected if and only if they are part of the same MST. Since the maximum number of edges in a minimum spanning forest
+is $V-1,$ the total size of this data structure is $O(V).$ Furthermore, we store the connected components using the union-find
+disjoint-set data structure covered in CS 161, which takes up space $O(V).$ The union-find structure supports testing for set membership and "merging" subsets
+with high effectiveness, but does not support "splitting" subsets up.
 
-Obviously, this sketch supports the query $\textsc{Is-Connected}(x,y).$ It also supports $\textsc{Add-Edge}(x,y).$ 
+Obviously, this sketch supports the query $\textsc{Is-Connected}(x,y).$ It also supports $\textsc{Add-Edge}(x,y)$ - to connect the nodes $u$ and $v,$ we 
+check if they are already in the same connected component. If they are, we ignore the addition; if they are not, we connect them and record 
+of $u$ and $v$ 
+draw
+an edge connecting the two vertices in the graph. 
+
 Here's a problem, though: _what happens if we delete edges?_
 
 Key problem
 ====
-We've now finally arrived at the problem the McGregor et al. paper aims to solve.
-We would like to solve the following problem: 
-__how can we sketch an undirected graph $G=(E,V)$ in a way that supports many structural queries?__
-Check if two vertices $u,v\in G$ are neighbors.
-Compute the number of connected components of the graph
-Check if the graph is bipartite.
+We've now finally arrived at the problem the McGregor et al. paper aims to solve. In particular, we want to find a sketch $\mathcal S(G)$ of size
+$O(V\log^k V)$ for a graph $G$ 
+that solves the problem of dynamic graph connectivity, supporting the high-level queries of whether two vertices $u,v\in G$ are connected, and
+adding or deleting an edge $(u,v)$ from $G.$ 
 
-Matrices and vectors representing graphs have one __key constraint__: their elements are binary!
-Adjacency matrix $A\in\{0,1\}^V\times\{0,1\}^V$ 
-Vector of neighbors $\mathbf{a}_i$: $\mathbf{a}_i[j] = [(i,j)\in E]$ 
+Intuition for the sketch
+====
+It turns out that the most effective way to sketch graphs will rely on being able to sketch some kind of _representation_ of them. Observe that most of
+the ways we represent graphs rely on regular data structures - in particular, matrices. The problem of sketching matrices is well-understood, and our graphs enforce
+a constraint that makes sketching them even easier. In particular, objects such as the 
+adjacency matrix representing a graph have a __key constraint__: their elements are binary! This means that we only need the relatively coarse constraint
+of looking for nonzero elements in the matrix in order to generate an efficient sketch of a graph. 
 
-There exist very good algorithms for sketching _linear_ data structures - e.g. vectors
+Conveniently, the problem of sketching vectors of numbers is well-understood in many different applications. In particular, the authors of the paper use
+
 Jowhari et al: "comb" sketching
 Input: vector $\mathbf{v}$ with some zero and nonzero elements
 Output: index $i$ such that $\mathbf{v}[i]$ is nonzero with high probability
@@ -136,15 +147,12 @@ Runtime: about $O(\log^2 n)$
 
 Comb sketch
 ====
-__Theorem (Jowhari et al):__ For a vector $x$ of length $n,$ there exists a 
-$O(\log^2 n)$ sketch $\mathcal S(x)$ such that
-    1. $\mathcal S$ is linear: $\mathcal S(x)+\mathcal S(y)=\mathcal S(x+y)$ for all $y$ of length $n$
-    2. Can easily obtain $i \leftarrow \mathcal S(x)$ such that $x_i \neq 0$ 
+In particular, the following theorem holds from previous work in the field.
+__Theorem (Jowhari et al):__ For a vector $x$ of length $n,$ there exists a $O(\log^2 n)$-sized sketch $\mathcal S(x)$ such that:
+1. $\mathcal S$ is _linear_ - that is, there exists some operation $\oplus$ such that 
+   $\mathcal S(x)\oplus\mathcal S(y)=\mathcal S(x+y)$ for all $y$ of length $n$, and
+2. We can "easily" (in roughly constant time) obtain $i \leftarrow \mathcal S(x)$ such that $x_i \neq 0$
 
-* TODO: image of comb; highlight tooth of comb
-
-Using comb sketches
-===
 * Intuition: to approximate connectivity in a graph, comb-sketch matrix representations of the graph.
 * Vector of neighbors $\mathbf{a}^i$: $\mathbf{a}^i_j = 1$ if $(i,j)\in E,$ $0$ otherwise
     * $i$th row of adjacency matrix
